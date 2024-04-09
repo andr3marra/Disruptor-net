@@ -1,0 +1,49 @@
+using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
+
+namespace Disruptor.PerfTests.Support;
+
+public class PerfAdditionChannelEventProcessor {
+    private volatile bool _running;
+    private long _value;
+    private long _sequence;
+    private ManualResetEvent _signal;
+
+    private readonly Channel<long> _channel;
+    private readonly long _count;
+
+    public PerfAdditionChannelEventProcessor(Channel<long> channel, long count) {
+        _channel = channel;
+        _count = count;
+    }
+
+    public long Value => _value;
+
+    public void Reset(ManualResetEvent signal) {
+        _value = 0L;
+        _sequence = 0L;
+        _signal = signal;
+    }
+
+    public void Halt() => _running = false;
+
+    public void Run() {
+        _running = true;
+        while (_running) {
+            long value;
+            if (!_channel.Reader.TryRead(out value))
+                continue;
+
+            _value += value;
+
+            if (_sequence++ == _count) {
+                _signal.Set();
+            }
+        }
+    }
+
+    public Task Start() {
+        return PerfTestUtil.StartLongRunning(Run);
+    }
+}
